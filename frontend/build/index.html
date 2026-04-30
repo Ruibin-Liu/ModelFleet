@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ModelFleet</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f23;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+        nav {
+            background: #1a1a2e;
+            padding: 1rem 2rem;
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+            border-bottom: 1px solid #2a2a4e;
+        }
+        nav h1 { color: #00d4aa; margin-right: auto; }
+        nav a {
+            color: #a0a0c0;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        nav a:hover, nav a.active {
+            color: #00d4aa;
+            background: rgba(0, 212, 170, 0.1);
+        }
+        main { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+        .page { display: none; }
+        .page.active { display: block; }
+        h2 { color: #00d4aa; margin-bottom: 1rem; }
+        .card {
+            background: #1a1a2e;
+            border: 1px solid #2a2a4e;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: #1a1a2e;
+            border: 1px solid #2a2a4e;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .stat-card h3 { color: #a0a0c0; font-size: 0.9rem; margin-bottom: 0.5rem; }
+        .stat-card .number { font-size: 2.5rem; font-weight: bold; color: #00d4aa; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; color: #a0a0c0; }
+        input, select, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            background: #0f0f23;
+            border: 1px solid #2a2a4e;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 1rem;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #00d4aa;
+        }
+        button {
+            background: #00d4aa;
+            color: #0f0f23;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        button.secondary {
+            background: transparent;
+            border: 1px solid #00d4aa;
+            color: #00d4aa;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #2a2a4e;
+        }
+        th { color: #a0a0c0; font-weight: normal; }
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+        }
+        .status-planned { background: #3d3d6b; color: #a0a0c0; }
+        .status-running { background: #1a4a3e; color: #00d4aa; }
+        .status-healthy { background: #1a4a3e; color: #00d4aa; }
+        .status-unhealthy { background: #4a1a1a; color: #ff6b6b; }
+        .actions { display: flex; gap: 0.5rem; }
+        .actions button {
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+        }
+        .error { color: #ff6b6b; padding: 1rem; background: #4a1a1a; border-radius: 4px; margin-bottom: 1rem; }
+        .success { color: #00d4aa; padding: 1rem; background: #1a4a3e; border-radius: 4px; margin-bottom: 1rem; }
+        .api-example {
+            background: #0f0f23;
+            border: 1px solid #2a2a4e;
+            border-radius: 4px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <nav>
+        <h1>ModelFleet</h1>
+        <a href="#" data-page="dashboard" class="active">Dashboard</a>
+        <a href="#" data-page="machines">Machines</a>
+        <a href="#" data-page="models">Models</a>
+        <a href="#" data-page="deployments">Deployments</a>
+        <a href="#" data-page="gateway">Gateway</a>
+    </nav>
+
+    <main>
+        <!-- Dashboard -->
+        <div id="dashboard" class="page active">
+            <h2>Dashboard</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Machines</h3>
+                    <div class="number" id="stat-machines">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Models</h3>
+                    <div class="number" id="stat-models">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Deployments</h3>
+                    <div class="number" id="stat-deployments">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Healthy</h3>
+                    <div class="number" id="stat-healthy">0</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Quick Start</h3>
+                <ol style="margin-left: 1.5rem; margin-top: 1rem;">
+                    <li>Add a machine via SSH</li>
+                    <li>Add a GGUF model</li>
+                    <li>Create a deployment</li>
+                    <li>Use the OpenAI-compatible API</li>
+                </ol>
+            </div>
+
+            <div class="card">
+                <h3>API Endpoint</h3>
+                <p style="margin-top: 0.5rem; color: #a0a0c0;">Base URL: <code>http://localhost:3456</code></p>
+                <div class="api-example">
+curl http://localhost:3456/v1/models
+
+curl http://localhost:3456/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "local/your-model",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+                </div>
+            </div>
+        </div>
+
+        <!-- Machines -->
+        <div id="machines" class="page">
+            <h2>Machines</h2>
+            
+            <div class="card">
+                <h3>Add Machine</h3>
+                <form id="machine-form" style="margin-top: 1rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="m-name" placeholder="e.g., office-gpu" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Host/IP</label>
+                            <input type="text" id="m-host" placeholder="e.g., 192.168.1.100" required>
+                        </div>
+                        <div class="form-group">
+                            <label>SSH Port</label>
+                            <input type="number" id="m-port" value="22" required>
+                        </div>
+                        <div class="form-group">
+                            <label>SSH User</label>
+                            <input type="text" id="m-user" placeholder="e.g., admin" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Auth Type</label>
+                            <select id="m-auth-type">
+                                <option value="key">Private Key</option>
+                                <option value="password">Password</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Private Key Path</label>
+                            <input type="text" id="m-key-path" placeholder="~/.ssh/id_rsa" value="~/.ssh/id_rsa">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Tags (comma-separated)</label>
+                        <input type="text" id="m-tags" placeholder="gpu, office">
+                    </div>
+                    <button type="submit">Add Machine</button>
+                </form>
+            </div>
+
+            <div id="machines-list">
+                <!-- Machines will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Models -->
+        <div id="models" class="page">
+            <h2>Models</h2>
+
+            <div class="card">
+                <h3>Add Model</h3>
+                <form id="model-form" style="margin-top: 1rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Display Name</label>
+                            <input type="text" id="md-name" placeholder="e.g., Qwen2.5 7B Instruct" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Filename</label>
+                            <input type="text" id="md-filename" placeholder="e.g., model.gguf" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Family</label>
+                            <input type="text" id="md-family" placeholder="e.g., qwen">
+                        </div>
+                        <div class="form-group">
+                            <label>Parameter Size</label>
+                            <input type="text" id="md-size" placeholder="e.g., 7B">
+                        </div>
+                        <div class="form-group">
+                            <label>Format</label>
+                            <select id="md-format">
+                                <option value="GGUF">GGUF</option>
+                                <option value="ONNX">ONNX</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Quantization</label>
+                            <input type="text" id="md-quant" placeholder="e.g., Q4_K_M">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Source URL</label>
+                        <input type="url" id="md-url" placeholder="https://huggingface.co/...">
+                    </div>
+                    <div class="form-group">
+                        <label>Tags</label>
+                        <input type="text" id="md-tags" placeholder="chat, instruct">
+                    </div>
+                    <button type="submit">Add Model</button>
+                </form>
+            </div>
+
+            <div id="models-list">
+                <!-- Models will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Deployments -->
+        <div id="deployments" class="page">
+            <h2>Deployments</h2>
+
+            <div class="card">
+                <h3>Create Deployment</h3>
+                <form id="deployment-form" style="margin-top: 1rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="d-name" placeholder="e.g., qwen-local" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Machine</label>
+                            <select id="d-machine" required>
+                                <option value="">Select machine...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Model</label>
+                            <select id="d-model" required>
+                                <option value="">Select model...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Backend</label>
+                            <select id="d-backend">
+                                <option value="cpu">CPU</option>
+                                <option value="cuda">CUDA</option>
+                                <option value="vulkan">Vulkan</option>
+                                <option value="metal">Metal</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Port</label>
+                            <input type="number" id="d-port" value="8081">
+                        </div>
+                        <div class="form-group">
+                            <label>Context Size</label>
+                            <input type="number" id="d-context" value="4096">
+                        </div>
+                    </div>
+                    <button type="submit">Create Deployment</button>
+                </form>
+            </div>
+
+            <div id="deployments-list">
+                <!-- Deployments will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Gateway -->
+        <div id="gateway" class="page">
+            <h2>API Gateway</h2>
+
+            <div class="card">
+                <h3>Endpoint Information</h3>
+                <p style="margin-top: 0.5rem;">
+                    <strong>Base URL:</strong> <code>http://localhost:3456</code><br>
+                    <strong>Models Endpoint:</strong> <code>GET /v1/models</code><br>
+                    <strong>Chat Completions:</strong> <code>POST /v1/chat/completions</code>
+                </p>
+            </div>
+
+            <div class="card">
+                <h3>Available Models</h3>
+                <div id="gateway-models">
+                    <p style="color: #a0a0c0;">Loading...</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Example Usage</h3>
+                <div class="api-example">
+# List available models
+curl http://localhost:3456/v1/models
+
+# Chat completion
+curl http://localhost:3456/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "local/your-model-name",
+    "messages": [
+      {"role": "user", "content": "Hello, how are you?"}
+    ]
+  }'
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Navigation
+        document.querySelectorAll('nav a').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const page = e.target.dataset.page;
+                showPage(page);
+            });
+        });
+
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            document.querySelector(`nav a[data-page="${pageId}"]`).classList.add('active');
+            
+            if (pageId === 'machines') loadMachines();
+            if (pageId === 'models') loadModels();
+            if (pageId === 'deployments') {
+                loadDeployments();
+                loadMachineOptions();
+                loadModelOptions();
+            }
+            if (pageId === 'gateway') loadGatewayModels();
+            if (pageId === 'dashboard') loadStats();
+        }
+
+        // API Helpers
+        async function api(url, options = {}) {
+            const res = await fetch(url, {
+                headers: { 'Content-Type': 'application/json' },
+                ...options
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error?.message || 'Request failed');
+            }
+            return res.json();
+        }
+
+        function showError(msg) {
+            const div = document.createElement('div');
+            div.className = 'error';
+            div.textContent = msg;
+            document.querySelector('main').insertBefore(div, document.querySelector('main').firstChild);
+            setTimeout(() => div.remove(), 5000);
+        }
+
+        function showSuccess(msg) {
+            const div = document.createElement('div');
+            div.className = 'success';
+            div.textContent = msg;
+            document.querySelector('main').insertBefore(div, document.querySelector('main').firstChild);
+            setTimeout(() => div.remove(), 3000);
+        }
+
+        // Machines
+        document.getElementById('machine-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                await api('/api/machines', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: document.getElementById('m-name').value,
+                        host: document.getElementById('m-host').value,
+                        ssh_port: parseInt(document.getElementById('m-port').value),
+                        ssh_user: document.getElementById('m-user').value,
+                        auth_type: document.getElementById('m-auth-type').value,
+                        auth_private_key_path: document.getElementById('m-key-path').value,
+                        tags: document.getElementById('m-tags').value
+                    })
+                });
+                showSuccess('Machine added successfully');
+                e.target.reset();
+                loadMachines();
+                loadStats();
+            } catch (err) {
+                showError(err.message);
+            }
+        });
+
+        async function loadMachines() {
+            try {
+                const machines = await api('/api/machines');
+                const container = document.getElementById('machines-list');
+                if (machines.length === 0) {
+                    container.innerHTML = '<div class="card"><p style="color: #a0a0c0;">No machines added yet.</p></div>';
+                    return;
+                }
+                
+                let html = '<div class="card"><h3>Machines List</h3><table><thead><tr><th>Name</th><th>Host</th><th>User</th><th>Port</th><th>Actions</th></tr></thead><tbody>';
+                machines.forEach(m => {
+                    html += `
+                        <tr>
+                            <td>${m.name}</td>
+                            <td>${m.host}</td>
+                            <td>${m.ssh_user}</td>
+                            <td>${m.ssh_port}</td>
+                            <td class="actions">
+                                <button onclick="testSSH('${m.id}')" class="secondary">Test SSH</button>
+                                <button onclick="detectMachine('${m.id}')" class="secondary">Detect</button>
+                                <button onclick="deleteMachine('${m.id}')" class="secondary">Delete</button>
+                            </td>
+                        </tr>`;
+                });
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        async function testSSH(id) {
+            try {
+                const result = await api(`/api/machines/${id}/test-ssh`, { method: 'POST' });
+                if (result.success) {
+                    showSuccess(result.message);
+                } else {
+                    showError(result.error);
+                }
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        async function detectMachine(id) {
+            try {
+                const result = await api(`/api/machines/${id}/detect`, { method: 'POST' });
+                showSuccess(`Detected: ${result.os_name || 'Unknown'} - ${result.capability_state}`);
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        async function deleteMachine(id) {
+            if (!confirm('Delete this machine?')) return;
+            try {
+                await api(`/api/machines/${id}`, { method: 'DELETE' });
+                showSuccess('Machine deleted');
+                loadMachines();
+                loadStats();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        // Models
+        document.getElementById('model-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                await api('/api/models', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        display_name: document.getElementById('md-name').value,
+                        filename: document.getElementById('md-filename').value,
+                        family: document.getElementById('md-family').value,
+                        parameter_size: document.getElementById('md-size').value,
+                        format: document.getElementById('md-format').value,
+                        quantization: document.getElementById('md-quant').value,
+                        source_url: document.getElementById('md-url').value,
+                        tags: document.getElementById('md-tags').value
+                    })
+                });
+                showSuccess('Model added successfully');
+                e.target.reset();
+                loadModels();
+                loadStats();
+            } catch (err) {
+                showError(err.message);
+            }
+        });
+
+        async function loadModels() {
+            try {
+                const models = await api('/api/models');
+                const container = document.getElementById('models-list');
+                if (models.length === 0) {
+                    container.innerHTML = '<div class="card"><p style="color: #a0a0c0;">No models added yet.</p></div>';
+                    return;
+                }
+                
+                let html = '<div class="card"><h3>Models List</h3><table><thead><tr><th>Name</th><th>Filename</th><th>Format</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
+                models.forEach(m => {
+                    html += `
+                        <tr>
+                            <td>${m.display_name}</td>
+                            <td>${m.filename}</td>
+                            <td>${m.format}</td>
+                            <td>${m.parameter_size || '-'}</td>
+                            <td><button onclick="deleteModel('${m.id}')" class="secondary">Delete</button></td>
+                        </tr>`;
+                });
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        async function deleteModel(id) {
+            if (!confirm('Delete this model?')) return;
+            try {
+                await api(`/api/models/${id}`, { method: 'DELETE' });
+                showSuccess('Model deleted');
+                loadModels();
+                loadStats();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        // Deployments
+        document.getElementById('deployment-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                await api('/api/deployments', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: document.getElementById('d-name').value,
+                        machine_id: document.getElementById('d-machine').value,
+                        model_id: document.getElementById('d-model').value,
+                        backend: document.getElementById('d-backend').value,
+                        port: parseInt(document.getElementById('d-port').value),
+                        context_size: parseInt(document.getElementById('d-context').value)
+                    })
+                });
+                showSuccess('Deployment created successfully');
+                e.target.reset();
+                loadDeployments();
+                loadStats();
+            } catch (err) {
+                showError(err.message);
+            }
+        });
+
+        async function loadDeployments() {
+            try {
+                const deployments = await api('/api/deployments');
+                const container = document.getElementById('deployments-list');
+                if (deployments.length === 0) {
+                    container.innerHTML = '<div class="card"><p style="color: #a0a0c0;">No deployments created yet.</p></div>';
+                    return;
+                }
+                
+                let html = '<div class="card"><h3>Deployments List</h3><table><thead><tr><th>Name</th><th>Model</th><th>Machine</th><th>Backend</th><th>Status</th><th>Endpoint</th><th>Actions</th></tr></thead><tbody>';
+                deployments.forEach(d => {
+                    const statusClass = `status-${d.status}`;
+                    html += `
+                        <tr>
+                            <td>${d.name}</td>
+                            <td>${d.model_id.substring(0, 8)}...</td>
+                            <td>${d.machine_id.substring(0, 8)}...</td>
+                            <td>${d.backend}</td>
+                            <td><span class="status-badge ${statusClass}">${d.status}</span></td>
+                            <td><code>${d.endpoint_url}</code></td>
+                            <td><button onclick="deleteDeployment('${d.id}')" class="secondary">Delete</button></td>
+                        </tr>`;
+                });
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        async function deleteDeployment(id) {
+            if (!confirm('Delete this deployment?')) return;
+            try {
+                await api(`/api/deployments/${id}`, { method: 'DELETE' });
+                showSuccess('Deployment deleted');
+                loadDeployments();
+                loadStats();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        async function loadMachineOptions() {
+            try {
+                const machines = await api('/api/machines');
+                const select = document.getElementById('d-machine');
+                select.innerHTML = '<option value="">Select machine...</option>';
+                machines.forEach(m => {
+                    select.innerHTML += `<option value="${m.id}">${m.name} (${m.host})</option>`;
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function loadModelOptions() {
+            try {
+                const models = await api('/api/models');
+                const select = document.getElementById('d-model');
+                select.innerHTML = '<option value="">Select model...</option>';
+                models.forEach(m => {
+                    select.innerHTML += `<option value="${m.id}">${m.display_name}</option>`;
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // Gateway
+        async function loadGatewayModels() {
+            try {
+                const data = await api('/v1/models');
+                const container = document.getElementById('gateway-models');
+                if (data.data.length === 0) {
+                    container.innerHTML = '<p style="color: #a0a0c0;">No models available. Create a deployment first.</p>';
+                    return;
+                }
+                let html = '<ul style="margin-top: 1rem; margin-left: 1.5rem;">';
+                data.data.forEach(m => {
+                    html += `<li><code>${m.id}</code></li>`;
+                });
+                html += '</ul>';
+                container.innerHTML = html;
+            } catch (err) {
+                container.innerHTML = `<p style="color: #ff6b6b;">Error: ${err.message}</p>`;
+            }
+        }
+
+        // Stats
+        async function loadStats() {
+            try {
+                const [machines, models, deployments] = await Promise.all([
+                    api('/api/machines'),
+                    api('/api/models'),
+                    api('/api/deployments')
+                ]);
+                document.getElementById('stat-machines').textContent = machines.length;
+                document.getElementById('stat-models').textContent = models.length;
+                document.getElementById('stat-deployments').textContent = deployments.length;
+                const healthy = deployments.filter(d => d.status === 'running').length;
+                document.getElementById('stat-healthy').textContent = healthy;
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // Initial load
+        loadStats();
+    </script>
+</body>
+</html>

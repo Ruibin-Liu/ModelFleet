@@ -1,0 +1,16 @@
+# Binaries
+modelfleet
+*.exe
+
+# Data directory
+data/
+
+# Logs
+*.log
+server.log
+
+# OS files
+.DS_Store
+
+# Temporary files
+*.tmp
