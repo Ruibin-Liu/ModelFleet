@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  modelfleet:
+    build: .
+    container_name: modelfleet
+    ports:
+      - "3456:3456"
+    environment:
+      - PORT=3456
+      - DATA_DIR=/app/data
+    volumes:
+      - modelfleet-data:/app/data
+      - ~/.ssh:/root/.ssh:ro  # Mount SSH keys for remote access
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3456/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  modelfleet-data:
+    driver: local

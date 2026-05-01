@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+CHANGELOG.md
+LICENSE
+*.md
+
+# Build artifacts
+modelfleet
+modelfleet-*
+*.exe
+
+# Data
+data/
+*.log
+
+# Development
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+*.test
+coverage.out
+
+# CI/CD
+.github/
+.pre-commit-config.yaml
