@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
+	"github.com/modelfleet/modelfleet/internal/deployment"
+	"github.com/modelfleet/modelfleet/internal/events"
 	"github.com/modelfleet/modelfleet/internal/models"
 	"github.com/modelfleet/modelfleet/internal/repository"
 )
@@ -13,13 +16,15 @@ type DeploymentHandler struct {
 	repo        *repository.DeploymentRepository
 	machineRepo *repository.MachineRepository
 	modelRepo   *repository.ModelRepository
+	executor    *deployment.Executor
 }
 
-func NewDeploymentHandler(repo *repository.DeploymentRepository, machineRepo *repository.MachineRepository, modelRepo *repository.ModelRepository) *DeploymentHandler {
+func NewDeploymentHandler(repo *repository.DeploymentRepository, machineRepo *repository.MachineRepository, modelRepo *repository.ModelRepository, eventLogger *events.Logger) *DeploymentHandler {
 	return &DeploymentHandler{
 		repo:        repo,
 		machineRepo: machineRepo,
 		modelRepo:   modelRepo,
+		executor:    deployment.NewExecutor(eventLogger),
 	}
 }
 
@@ -132,4 +137,137 @@ func (h *DeploymentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *DeploymentHandler) Start(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		JSONError(w, "Deployment ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Get deployment
+	dep, err := h.repo.GetByID(id)
+	if err != nil {
+		JSONError(w, "Deployment not found", http.StatusNotFound)
+		return
+	}
+
+	// Get machine
+	machine, err := h.machineRepo.GetByID(dep.MachineID)
+	if err != nil {
+		JSONError(w, "Machine not found", http.StatusBadRequest)
+		return
+	}
+
+	// Get model
+	model, err := h.modelRepo.GetByID(dep.ModelID)
+	if err != nil {
+		JSONError(w, "Model not found", http.StatusBadRequest)
+		return
+	}
+
+	// Update status to deploying
+	h.repo.UpdateStatus(id, "deploying")
+
+	// Execute start
+	result, err := h.executor.Start(dep, machine, model)
+	if err != nil {
+		h.repo.UpdateStatus(id, "failed")
+		JSONError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !result.Success {
+		h.repo.UpdateStatus(id, "failed")
+		JSONError(w, result.Error, http.StatusInternalServerError)
+		return
+	}
+
+	// Update status to running
+	h.repo.UpdateStatus(id, "running")
+
+	JSONResponse(w, map[string]interface{}{
+		"success": true,
+		"message": result.Message,
+	})
+}
+
+func (h *DeploymentHandler) Stop(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		JSONError(w, "Deployment ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Get deployment
+	dep, err := h.repo.GetByID(id)
+	if err != nil {
+		JSONError(w, "Deployment not found", http.StatusNotFound)
+		return
+	}
+
+	// Get machine
+	machine, err := h.machineRepo.GetByID(dep.MachineID)
+	if err != nil {
+		JSONError(w, "Machine not found", http.StatusBadRequest)
+		return
+	}
+
+	// Execute stop
+	result, err := h.executor.Stop(dep, machine)
+	if err != nil {
+		JSONError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update status to stopped
+	h.repo.UpdateStatus(id, "stopped")
+
+	JSONResponse(w, map[string]interface{}{
+		"success": true,
+		"message": result.Message,
+	})
+}
+
+func (h *DeploymentHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		JSONError(w, "Deployment ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Get deployment
+	dep, err := h.repo.GetByID(id)
+	if err != nil {
+		JSONError(w, "Deployment not found", http.StatusNotFound)
+		return
+	}
+
+	// Get machine
+	machine, err := h.machineRepo.GetByID(dep.MachineID)
+	if err != nil {
+		JSONError(w, "Machine not found", http.StatusBadRequest)
+		return
+	}
+
+	// Parse lines parameter
+	linesStr := r.URL.Query().Get("lines")
+	lines := 100
+	if linesStr != "" {
+		if l, err := strconv.Atoi(linesStr); err == nil {
+			lines = l
+		}
+	}
+
+	// Get logs
+	logs, err := h.executor.GetLogs(dep, machine, lines)
+	if err != nil {
+		JSONError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	JSONResponse(w, map[string]interface{}{
+		"logs": logs,
+	})
 }

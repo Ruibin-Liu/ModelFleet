@@ -138,6 +138,7 @@
         <a href="#" data-page="machines">Machines</a>
         <a href="#" data-page="models">Models</a>
         <a href="#" data-page="deployments">Deployments</a>
+        <a href="#" data-page="events">Events</a>
         <a href="#" data-page="gateway">Gateway</a>
     </nav>
 
@@ -382,6 +383,14 @@ curl http://localhost:3456/v1/chat/completions \\
                 </div>
             </div>
         </div>
+
+        <!-- Events -->
+        <div id="events" class="page">
+            <h2>Events</h2>
+            <div id="events-list">
+                <p style="color: #a0a0c0;">Loading events...</p>
+            </div>
+        </div>
     </main>
 
     <script>
@@ -409,6 +418,7 @@ curl http://localhost:3456/v1/chat/completions \\
             }
             if (pageId === 'gateway') loadGatewayModels();
             if (pageId === 'dashboard') loadStats();
+            if (pageId === 'events') loadEvents();
         }
 
         // API Helpers
@@ -631,6 +641,8 @@ curl http://localhost:3456/v1/chat/completions \\
                 let html = '<div class="card"><h3>Deployments List</h3><table><thead><tr><th>Name</th><th>Model</th><th>Machine</th><th>Backend</th><th>Status</th><th>Endpoint</th><th>Actions</th></tr></thead><tbody>';
                 deployments.forEach(d => {
                     const statusClass = `status-${d.status}`;
+                    const canStart = d.status === 'planned' || d.status === 'stopped' || d.status === 'failed';
+                    const canStop = d.status === 'running' || d.status === 'deploying';
                     html += `
                         <tr>
                             <td>${d.name}</td>
@@ -639,7 +651,12 @@ curl http://localhost:3456/v1/chat/completions \\
                             <td>${d.backend}</td>
                             <td><span class="status-badge ${statusClass}">${d.status}</span></td>
                             <td><code>${d.endpoint_url}</code></td>
-                            <td><button onclick="deleteDeployment('${d.id}')" class="secondary">Delete</button></td>
+                            <td class="actions">
+                                ${canStart ? `<button onclick="startDeployment('${d.id}')" class="secondary">Start</button>` : ''}
+                                ${canStop ? `<button onclick="stopDeployment('${d.id}')" class="secondary">Stop</button>` : ''}
+                                <button onclick="viewLogs('${d.id}')" class="secondary">Logs</button>
+                                <button onclick="deleteDeployment('${d.id}')" class="secondary">Delete</button>
+                            </td>
                         </tr>`;
                 });
                 html += '</tbody></table></div>';
@@ -656,6 +673,62 @@ curl http://localhost:3456/v1/chat/completions \\
                 showSuccess('Deployment deleted');
                 loadDeployments();
                 loadStats();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        async function startDeployment(id) {
+            try {
+                const result = await api(`/api/deployments/${id}/start`, { method: 'POST' });
+                if (result.success) {
+                    showSuccess(result.message);
+                } else {
+                    showError(result.error || 'Failed to start deployment');
+                }
+                loadDeployments();
+                loadStats();
+            } catch (err) {
+                showError(err.message);
+                loadDeployments();
+            }
+        }
+
+        async function stopDeployment(id) {
+            try {
+                const result = await api(`/api/deployments/${id}/stop`, { method: 'POST' });
+                if (result.success) {
+                    showSuccess(result.message);
+                } else {
+                    showError(result.error || 'Failed to stop deployment');
+                }
+                loadDeployments();
+                loadStats();
+            } catch (err) {
+                showError(err.message);
+                loadDeployments();
+            }
+        }
+
+        async function viewLogs(id) {
+            try {
+                const data = await api(`/api/deployments/${id}/logs?lines=50`);
+                const modal = document.createElement('div');
+                modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000;display:flex;align-items:center;justify-content:center;';
+                modal.innerHTML = `
+                    <div style="background:#1a1a2e;border:1px solid #2a2a4e;border-radius:8px;padding:1.5rem;max-width:800px;width:90%;max-height:80vh;overflow:auto;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                            <h3 style="margin:0;">Deployment Logs</h3>
+                            <button onclick="this.closest('.modal').remove()" style="background:transparent;border:1px solid #ff6b6b;color:#ff6b6b;">Close</button>
+                        </div>
+                        <pre style="background:#0f0f23;padding:1rem;border-radius:4px;overflow-x:auto;font-size:0.85rem;line-height:1.5;">${data.logs || 'No logs available'}</pre>
+                    </div>
+                `;
+                modal.className = 'modal';
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) modal.remove();
+                });
+                document.body.appendChild(modal);
             } catch (err) {
                 showError(err.message);
             }
@@ -704,6 +777,35 @@ curl http://localhost:3456/v1/chat/completions \\
                 container.innerHTML = html;
             } catch (err) {
                 container.innerHTML = `<p style="color: #ff6b6b;">Error: ${err.message}</p>`;
+            }
+        }
+
+        // Events
+        async function loadEvents() {
+            try {
+                const events = await api('/api/events');
+                const container = document.getElementById('events-list');
+                if (events.length === 0) {
+                    container.innerHTML = '<div class="card"><p style="color: #a0a0c0;">No events yet.</p></div>';
+                    return;
+                }
+                
+                let html = '<div class="card"><h3>Recent Events</h3><table><thead><tr><th>Time</th><th>Type</th><th>Severity</th><th>Message</th></tr></thead><tbody>';
+                events.forEach(e => {
+                    const time = new Date(e.created_at).toLocaleString();
+                    const severityClass = e.severity === 'error' ? 'style="color: #ff6b6b;"' : e.severity === 'warning' ? 'style="color: #ffa500;"' : '';
+                    html += `
+                        <tr>
+                            <td style="white-space: nowrap; font-size: 0.85rem;">${time}</td>
+                            <td><code>${e.type}</code></td>
+                            <td ${severityClass}>${e.severity}</td>
+                            <td>${e.message}</td>
+                        </tr>`;
+                });
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+            } catch (err) {
+                document.getElementById('events-list').innerHTML = `<p style="color: #ff6b6b;">Error: ${err.message}</p>`;
             }
         }
 

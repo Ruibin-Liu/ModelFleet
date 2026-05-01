@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/modelfleet/modelfleet/internal/api"
+	"github.com/modelfleet/modelfleet/internal/events"
+	"github.com/modelfleet/modelfleet/internal/health"
 	"github.com/modelfleet/modelfleet/internal/repository"
 	"github.com/modelfleet/modelfleet/internal/store"
 )
@@ -31,9 +33,19 @@ func main() {
 	machineRepo := repository.NewMachineRepository(jsonStore)
 	modelRepo := repository.NewModelRepository(jsonStore)
 	deploymentRepo := repository.NewDeploymentRepository(jsonStore)
+	eventRepo := repository.NewEventRepository(jsonStore)
+	apiKeyRepo := repository.NewAPIKeyRepository(jsonStore)
+
+	// Initialize event logger
+	eventLogger := events.NewLogger(jsonStore)
+
+	// Initialize health check scheduler
+	healthScheduler := health.NewScheduler(deploymentRepo, eventLogger)
+	healthScheduler.Start()
+	defer healthScheduler.Stop()
 
 	// Create router
-	router := api.NewRouter(machineRepo, modelRepo, deploymentRepo)
+	router := api.NewRouter(machineRepo, modelRepo, deploymentRepo, eventRepo, apiKeyRepo, eventLogger)
 
 	log.Printf("ModelFleet starting on port %s", port)
 	log.Printf("API: http://localhost:%s", port)

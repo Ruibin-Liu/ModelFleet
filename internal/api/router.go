@@ -1,19 +1,33 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"os"
+	"strings"
 
+	"github.com/modelfleet/modelfleet/internal/events"
+	"github.com/modelfleet/modelfleet/internal/gateway"
+	"github.com/modelfleet/modelfleet/internal/models"
 	"github.com/modelfleet/modelfleet/internal/repository"
 )
 
-func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.ModelRepository, deploymentRepo *repository.DeploymentRepository) http.Handler {
+func NewRouter(
+	machineRepo *repository.MachineRepository,
+	modelRepo *repository.ModelRepository,
+	deploymentRepo *repository.DeploymentRepository,
+	eventRepo *repository.EventRepository,
+	apiKeyRepo *repository.APIKeyRepository,
+	eventLogger *events.Logger,
+) http.Handler {
 	mux := http.NewServeMux()
 
+	// Initialize handlers
 	machineHandler := NewMachineHandler(machineRepo)
 	modelHandler := NewModelHandler(modelRepo)
-	deploymentHandler := NewDeploymentHandler(deploymentRepo, machineRepo, modelRepo)
-	gatewayHandler := NewGatewayHandler(deploymentRepo)
+	deploymentHandler := NewDeploymentHandler(deploymentRepo, machineRepo, modelRepo, eventLogger)
+	gatewayProxy := gateway.NewProxy(deploymentRepo, eventLogger)
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -105,10 +119,51 @@ func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.
 		}
 	})
 
+	mux.HandleFunc("/api/deployments/{id}/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			deploymentHandler.Start(w, r)
+		} else {
+			JSONError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/api/deployments/{id}/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			deploymentHandler.Stop(w, r)
+		} else {
+			JSONError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/api/deployments/{id}/logs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			deploymentHandler.GetLogs(w, r)
+		} else {
+			JSONError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Events route
+	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			events, err := eventRepo.GetRecent(100)
+			if err != nil {
+				JSONError(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if events == nil {
+				events = []models.Event{}
+			}
+			JSONResponse(w, events)
+		} else {
+			JSONError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	// Gateway routes
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			gatewayHandler.ListModels(w, r)
+			gatewayProxy.ListModels(w, r)
 		} else {
 			JSONError(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -116,7 +171,7 @@ func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.
 
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			gatewayHandler.ChatCompletions(w, r)
+			gatewayProxy.ChatCompletions(w, r)
 		} else {
 			JSONError(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -133,4 +188,42 @@ func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.
 	}
 
 	return mux
+}
+
+// Helper for generating IDs
+func GenerateID() string {
+	bytes := make([]byte, 8)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
+
+// API Key middleware (basic version - can be enhanced)
+func APIKeyAuth(apiKeyRepo *repository.APIKeyRepository, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			JSONError(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		// Extract Bearer token
+		parts := strings.SplitN(auth, " ", 2)
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			JSONError(w, "Invalid authorization format. Use: Bearer <token>", http.StatusUnauthorized)
+			return
+		}
+
+		token := parts[1]
+		hash := repository.HashAPIKey(token)
+
+		key, err := apiKeyRepo.ValidateKey(hash)
+		if err != nil {
+			JSONError(w, "Invalid API key", http.StatusUnauthorized)
+			return
+		}
+
+		// Store key info in context for later use
+		_ = key
+		next(w, r)
+	}
 }
