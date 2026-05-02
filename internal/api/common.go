@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/modelfleet/modelfleet/internal/docker"
 	"github.com/modelfleet/modelfleet/internal/models"
 )
 
@@ -207,4 +208,19 @@ func detectMachine(machine *models.Machine) (*DetectionResult, error) {
 	}
 
 	return result, nil
+}
+
+func testDockerConnection(machine *models.Machine) (map[string]interface{}, error) {
+	client := docker.NewClient(machine.DockerHost)
+	if err := client.TestConnection(); err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Docker connection failed: %v", err),
+		}, nil
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"message": "Docker connection successful",
+	}, nil
 }

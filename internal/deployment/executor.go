@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/modelfleet/modelfleet/internal/docker"
 	"github.com/modelfleet/modelfleet/internal/events"
 	"github.com/modelfleet/modelfleet/internal/models"
 )
@@ -243,4 +244,157 @@ func (e *Executor) buildSSHArgs(machine *models.Machine) []string {
 
 	args = append(args, fmt.Sprintf("%s@%s", machine.SSHUser, machine.Host))
 	return args
+}
+
+// Docker deployment methods
+func (e *Executor) StartDocker(deployment *models.Deployment, machine *models.Machine, model *models.Model) (*ExecutionResult, error) {
+	client := docker.NewClient(machine.DockerHost)
+	containerName := fmt.Sprintf("modelfleet-%s", deployment.Name)
+
+	// Step 1: Check if container already exists
+	exists, err := client.ContainerExists(containerName)
+	if err != nil {
+		return &ExecutionResult{
+			Success: false,
+			Message: "Failed to check container status",
+			Error:   err.Error(),
+		}, nil
+	}
+
+	if exists {
+		// Check if running
+		running, err := client.ContainerRunning(containerName)
+		if err != nil {
+			return &ExecutionResult{
+				Success: false,
+				Message: "Failed to check container status",
+				Error:   err.Error(),
+			}, nil
+		}
+
+		if running {
+			return &ExecutionResult{
+				Success: true,
+				Message: fmt.Sprintf("Container %s is already running", containerName),
+			}, nil
+		}
+
+		// Start existing container
+		if err := client.StartContainer(containerName); err != nil {
+			return &ExecutionResult{
+				Success: false,
+				Message: "Failed to start existing container",
+				Error:   err.Error(),
+			}, nil
+		}
+
+		return &ExecutionResult{
+			Success: true,
+			Message: fmt.Sprintf("Container %s started", containerName),
+		}, nil
+	}
+
+	// Step 2: Pull image
+	e.eventLogger.LogDeployment(deployment.ID, machine.ID, "pull_image", true, nil)
+	if err := client.PullImage(machine.DockerImage); err != nil {
+		return &ExecutionResult{
+			Success: false,
+			Message: "Failed to pull Docker image",
+			Error:   err.Error(),
+		}, nil
+	}
+
+	// Step 3: Prepare volume mounts
+	// Map model file from host to container
+	modelHostPath := filepath.Join(machine.BaseDir, "models", model.Filename)
+	modelContainerPath := "/models/" + model.Filename
+
+	volumes := map[string]string{
+		modelHostPath: modelContainerPath,
+	}
+
+	// Step 4: Prepare port mappings
+	ports := map[string]string{
+		fmt.Sprintf("%d", deployment.Port): fmt.Sprintf("%d", deployment.Port),
+	}
+
+	// Step 5: Build command arguments
+	env := map[string]string{}
+
+	// Step 6: Create and start container
+	if err := client.CreateContainer(
+		containerName,
+		machine.DockerImage,
+		ports,
+		volumes,
+		env,
+		machine.DockerNetwork,
+	); err != nil {
+		return &ExecutionResult{
+			Success: false,
+			Message: "Failed to create container",
+			Error:   err.Error(),
+		}, nil
+	}
+
+	// Wait a moment and verify
+	time.Sleep(2 * time.Second)
+	running, err := client.ContainerRunning(containerName)
+	if err != nil || !running {
+		return &ExecutionResult{
+			Success: false,
+			Message: "Container created but not running",
+			Error:   "Check logs for details",
+		}, nil
+	}
+
+	return &ExecutionResult{
+		Success: true,
+		Message: fmt.Sprintf("Container %s started on port %d", containerName, deployment.Port),
+	}, nil
+}
+
+func (e *Executor) StopDocker(deployment *models.Deployment, machine *models.Machine) (*ExecutionResult, error) {
+	client := docker.NewClient(machine.DockerHost)
+	containerName := fmt.Sprintf("modelfleet-%s", deployment.Name)
+
+	exists, err := client.ContainerExists(containerName)
+	if err != nil {
+		return &ExecutionResult{
+			Success: false,
+			Message: "Failed to check container status",
+			Error:   err.Error(),
+		}, nil
+	}
+
+	if !exists {
+		return &ExecutionResult{
+			Success: true,
+			Message: "Container does not exist",
+		}, nil
+	}
+
+	if err := client.StopContainer(containerName); err != nil {
+		return &ExecutionResult{
+			Success: false,
+			Message: "Failed to stop container",
+			Error:   err.Error(),
+		}, nil
+	}
+
+	return &ExecutionResult{
+		Success: true,
+		Message: fmt.Sprintf("Container %s stopped", containerName),
+	}, nil
+}
+
+func (e *Executor) GetDockerLogs(deployment *models.Deployment, machine *models.Machine, lines int) (string, error) {
+	client := docker.NewClient(machine.DockerHost)
+	containerName := fmt.Sprintf("modelfleet-%s", deployment.Name)
+
+	if lines <= 0 {
+		lines = 100
+	}
+
+	return client.GetContainerLogs(containerName, lines)
 }

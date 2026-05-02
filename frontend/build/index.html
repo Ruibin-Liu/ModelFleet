@@ -208,23 +208,38 @@ curl http://localhost:3456/v1/chat/completions \\
                             <input type="text" id="m-host" placeholder="e.g., 192.168.1.100" required>
                         </div>
                         <div class="form-group">
+                            <label>Connection Type</label>
+                            <select id="m-connection-type" onchange="toggleMachineFields()">
+                                <option value="ssh">SSH</option>
+                                <option value="docker">Docker</option>
+                            </select>
+                        </div>
+                        <div class="form-group ssh-field">
                             <label>SSH Port</label>
-                            <input type="number" id="m-port" value="22" required>
+                            <input type="number" id="m-port" value="22">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group ssh-field">
                             <label>SSH User</label>
-                            <input type="text" id="m-user" placeholder="e.g., admin" required>
+                            <input type="text" id="m-user" placeholder="e.g., admin">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group ssh-field">
                             <label>Auth Type</label>
                             <select id="m-auth-type">
                                 <option value="key">Private Key</option>
                                 <option value="password">Password</option>
                             </select>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group ssh-field">
                             <label>Private Key Path</label>
                             <input type="text" id="m-key-path" placeholder="~/.ssh/id_rsa" value="~/.ssh/id_rsa">
+                        </div>
+                        <div class="form-group docker-field" style="display: none;">
+                            <label>Docker Host (optional)</label>
+                            <input type="text" id="m-docker-host" placeholder="unix:///var/run/docker.sock">
+                        </div>
+                        <div class="form-group docker-field" style="display: none;">
+                            <label>Docker Image</label>
+                            <input type="text" id="m-docker-image" placeholder="ghcr.io/ggml-org/llama.cpp:server" value="ghcr.io/ggml-org/llama.cpp:server">
                         </div>
                     </div>
                     <div class="form-group">
@@ -450,24 +465,53 @@ curl http://localhost:3456/v1/chat/completions \\
             setTimeout(() => div.remove(), 3000);
         }
 
+        function toggleMachineFields() {
+            const connectionType = document.getElementById('m-connection-type').value;
+            const sshFields = document.querySelectorAll('.ssh-field');
+            const dockerFields = document.querySelectorAll('.docker-field');
+            
+            if (connectionType === 'docker') {
+                sshFields.forEach(f => f.style.display = 'none');
+                dockerFields.forEach(f => f.style.display = 'block');
+                document.getElementById('m-port').removeAttribute('required');
+                document.getElementById('m-user').removeAttribute('required');
+            } else {
+                sshFields.forEach(f => f.style.display = 'block');
+                dockerFields.forEach(f => f.style.display = 'none');
+                document.getElementById('m-port').setAttribute('required', '');
+                document.getElementById('m-user').setAttribute('required', '');
+            }
+        }
+
         // Machines
         document.getElementById('machine-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             try {
+                const connectionType = document.getElementById('m-connection-type').value;
+                const payload = {
+                    name: document.getElementById('m-name').value,
+                    host: document.getElementById('m-host').value,
+                    connection_type: connectionType,
+                    tags: document.getElementById('m-tags').value
+                };
+                
+                if (connectionType === 'ssh') {
+                    payload.ssh_port = parseInt(document.getElementById('m-port').value);
+                    payload.ssh_user = document.getElementById('m-user').value;
+                    payload.auth_type = document.getElementById('m-auth-type').value;
+                    payload.auth_private_key_path = document.getElementById('m-key-path').value;
+                } else if (connectionType === 'docker') {
+                    payload.docker_host = document.getElementById('m-docker-host').value;
+                    payload.docker_image = document.getElementById('m-docker-image').value;
+                }
+                
                 await api('/api/machines', {
                     method: 'POST',
-                    body: JSON.stringify({
-                        name: document.getElementById('m-name').value,
-                        host: document.getElementById('m-host').value,
-                        ssh_port: parseInt(document.getElementById('m-port').value),
-                        ssh_user: document.getElementById('m-user').value,
-                        auth_type: document.getElementById('m-auth-type').value,
-                        auth_private_key_path: document.getElementById('m-key-path').value,
-                        tags: document.getElementById('m-tags').value
-                    })
+                    body: JSON.stringify(payload)
                 });
                 showSuccess('Machine added successfully');
                 e.target.reset();
+                toggleMachineFields();
                 loadMachines();
                 loadStats();
             } catch (err) {
@@ -484,16 +528,24 @@ curl http://localhost:3456/v1/chat/completions \\
                     return;
                 }
                 
-                let html = '<div class="card"><h3>Machines List</h3><table><thead><tr><th>Name</th><th>Host</th><th>User</th><th>Port</th><th>Actions</th></tr></thead><tbody>';
+                let html = '<div class="card"><h3>Machines List</h3><table><thead><tr><th>Name</th><th>Type</th><th>Host</th><th>Details</th><th>Actions</th></tr></thead><tbody>';
                 machines.forEach(m => {
+                    const typeBadge = m.connection_type === 'docker' 
+                        ? '<span class="status-badge status-running">Docker</span>' 
+                        : '<span class="status-badge status-planned">SSH</span>';
+                    const details = m.connection_type === 'docker' 
+                        ? `<code>${m.docker_image || 'default'}</code>` 
+                        : `${m.ssh_user}:${m.ssh_port}`;
+                    const testLabel = m.connection_type === 'docker' ? 'Test Docker' : 'Test SSH';
+                    
                     html += `
                         <tr>
                             <td>${m.name}</td>
+                            <td>${typeBadge}</td>
                             <td>${m.host}</td>
-                            <td>${m.ssh_user}</td>
-                            <td>${m.ssh_port}</td>
+                            <td>${details}</td>
                             <td class="actions">
-                                <button onclick="testSSH('${m.id}')" class="secondary">Test SSH</button>
+                                <button onclick="testSSH('${m.id}')" class="secondary">${testLabel}</button>
                                 <button onclick="detectMachine('${m.id}')" class="secondary">Detect</button>
                                 <button onclick="deleteMachine('${m.id}')" class="secondary">Delete</button>
                             </td>

@@ -37,13 +37,14 @@ func (h *MachineHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Name == "" || req.Host == "" || req.SSHUser == "" {
-		JSONError(w, "name, host, and ssh_user are required", http.StatusBadRequest)
+	if req.Name == "" || req.Host == "" {
+		JSONError(w, "name and host are required", http.StatusBadRequest)
 		return
 	}
 
-	if req.SSHPort == 0 {
-		req.SSHPort = 22
+	// Set default connection type
+	if req.ConnectionType == "" {
+		req.ConnectionType = "ssh"
 	}
 
 	machine := &models.Machine{
@@ -57,15 +58,38 @@ func (h *MachineHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Tags:               req.Tags,
 		Notes:              req.Notes,
 		BaseDir:            req.BaseDir,
-		ConnectionType:     "ssh",
+		ConnectionType:     req.ConnectionType,
+		DockerHost:         req.DockerHost,
+		DockerImage:        req.DockerImage,
+		DockerNetwork:      req.DockerNetwork,
+		DockerRuntime:      req.DockerRuntime,
+	}
+
+	// Validate based on connection type
+	switch machine.ConnectionType {
+	case "ssh":
+		if machine.SSHUser == "" {
+			JSONError(w, "ssh_user is required for SSH machines", http.StatusBadRequest)
+			return
+		}
+		if machine.SSHPort == 0 {
+			machine.SSHPort = 22
+		}
+		if machine.AuthType == "" {
+			machine.AuthType = "key"
+		}
+	case "docker":
+		if machine.DockerImage == "" {
+			machine.DockerImage = "ghcr.io/ggml-org/llama.cpp:server"
+		}
+		// Docker machines don't need SSH credentials
+	default:
+		JSONError(w, "connection_type must be 'ssh' or 'docker'", http.StatusBadRequest)
+		return
 	}
 
 	if machine.BaseDir == "" {
 		machine.BaseDir = "~/modelfleet"
-	}
-
-	if machine.AuthType == "" {
-		machine.AuthType = "key"
 	}
 
 	if err := h.repo.Create(machine); err != nil {
@@ -106,6 +130,20 @@ func (h *MachineHandler) TestSSH(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle Docker machines
+	if machine.ConnectionType == "docker" {
+		result, err := testDockerConnection(machine)
+		if err != nil {
+			JSONResponse(w, map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+			})
+			return
+		}
+		JSONResponse(w, result)
+		return
+	}
+
 	result, err := testSSHConnection(machine)
 	if err != nil {
 		JSONResponse(w, map[string]interface{}{
@@ -128,6 +166,18 @@ func (h *MachineHandler) Detect(w http.ResponseWriter, r *http.Request) {
 	machine, err := h.repo.GetByID(id)
 	if err != nil {
 		JSONError(w, "Machine not found", http.StatusNotFound)
+		return
+	}
+
+	// For Docker machines, detection is limited
+	if machine.ConnectionType == "docker" {
+		JSONResponse(w, map[string]interface{}{
+			"connection_type":  "docker",
+			"docker_host":      machine.DockerHost,
+			"docker_image":     machine.DockerImage,
+			"capability_state": "docker_ready",
+			"message":          "Docker machine - hardware detection not applicable",
+		})
 		return
 	}
 

@@ -170,11 +170,19 @@ func (h *DeploymentHandler) Start(w http.ResponseWriter, r *http.Request) {
 	// Update status to deploying
 	h.repo.UpdateStatus(id, "deploying")
 
-	// Execute start
-	result, err := h.executor.Start(dep, machine, model)
-	if err != nil {
+	// Execute start based on machine type
+	var result *deployment.ExecutionResult
+	var execErr error
+
+	if machine.ConnectionType == "docker" {
+		result, execErr = h.executor.StartDocker(dep, machine, model)
+	} else {
+		result, execErr = h.executor.Start(dep, machine, model)
+	}
+
+	if execErr != nil {
 		h.repo.UpdateStatus(id, "failed")
-		JSONError(w, err.Error(), http.StatusInternalServerError)
+		JSONError(w, execErr.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -214,10 +222,18 @@ func (h *DeploymentHandler) Stop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Execute stop
-	result, err := h.executor.Stop(dep, machine)
-	if err != nil {
-		JSONError(w, err.Error(), http.StatusInternalServerError)
+	// Execute stop based on machine type
+	var result *deployment.ExecutionResult
+	var execErr error
+
+	if machine.ConnectionType == "docker" {
+		result, execErr = h.executor.StopDocker(dep, machine)
+	} else {
+		result, execErr = h.executor.Stop(dep, machine)
+	}
+
+	if execErr != nil {
+		JSONError(w, execErr.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -260,10 +276,18 @@ func (h *DeploymentHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get logs
-	logs, err := h.executor.GetLogs(dep, machine, lines)
-	if err != nil {
-		JSONError(w, err.Error(), http.StatusInternalServerError)
+	// Get logs based on machine type
+	var logs string
+	var logsErr error
+
+	if machine.ConnectionType == "docker" {
+		logs, logsErr = h.executor.GetDockerLogs(dep, machine, lines)
+	} else {
+		logs, logsErr = h.executor.GetLogs(dep, machine, lines)
+	}
+
+	if logsErr != nil {
+		JSONError(w, logsErr.Error(), http.StatusInternalServerError)
 		return
 	}
 
