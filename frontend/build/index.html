@@ -255,6 +255,28 @@ curl http://localhost:3456/v1/chat/completions \\
             </div>
         </div>
 
+        <!-- Machine Detail -->
+        <div id="machine-detail" class="page">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 id="machine-detail-name">Machine Detail</h2>
+                <button onclick="showPage('machines')" class="secondary">← Back to Machines</button>
+            </div>
+            
+            <div class="card">
+                <h3>Hardware Information</h3>
+                <div id="machine-hardware-info">
+                    <p style="color: #a0a0c0;">No detection data. Run detection first.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Deployable Models</h3>
+                <div id="machine-deployable-models">
+                    <p style="color: #a0a0c0;">Run detection to see deployable models.</p>
+                </div>
+            </div>
+        </div>
+
         <!-- Models -->
         <div id="models" class="page">
             <h2>Models</h2>
@@ -418,11 +440,18 @@ curl http://localhost:3456/v1/chat/completions \\
             });
         });
 
-        function showPage(pageId) {
+        let currentMachineId = null;
+
+        function showPage(pageId, params = {}) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
-            document.getElementById(pageId).classList.add('active');
-            document.querySelector(`nav a[data-page="${pageId}"]`).classList.add('active');
+            
+            const page = document.getElementById(pageId);
+            if (page) {
+                page.classList.add('active');
+                const navLink = document.querySelector(`nav a[data-page="${pageId}"]`);
+                if (navLink) navLink.classList.add('active');
+            }
             
             if (pageId === 'machines') loadMachines();
             if (pageId === 'models') loadModels();
@@ -434,6 +463,9 @@ curl http://localhost:3456/v1/chat/completions \\
             if (pageId === 'gateway') loadGatewayModels();
             if (pageId === 'dashboard') loadStats();
             if (pageId === 'events') loadEvents();
+            if (pageId === 'machine-detail' && params.machineId) {
+                loadMachineDetail(params.machineId);
+            }
         }
 
         // API Helpers
@@ -540,11 +572,12 @@ curl http://localhost:3456/v1/chat/completions \\
                     
                     html += `
                         <tr>
-                            <td>${m.name}</td>
+                            <td><strong>${m.name}</strong></td>
                             <td>${typeBadge}</td>
                             <td>${m.host}</td>
                             <td>${details}</td>
                             <td class="actions">
+                                <button onclick="viewMachineDetail('${m.id}')" class="secondary">View</button>
                                 <button onclick="testSSH('${m.id}')" class="secondary">${testLabel}</button>
                                 <button onclick="detectMachine('${m.id}')" class="secondary">Detect</button>
                                 <button onclick="deleteMachine('${m.id}')" class="secondary">Delete</button>
@@ -590,6 +623,101 @@ curl http://localhost:3456/v1/chat/completions \\
             } catch (err) {
                 showError(err.message);
             }
+        }
+
+        async function viewMachineDetail(id) {
+            currentMachineId = id;
+            showPage('machine-detail', { machineId: id });
+        }
+
+        async function loadMachineDetail(id) {
+            try {
+                // Load machine info
+                const data = await api(`/api/machines/${id}`);
+                document.getElementById('machine-detail-name').textContent = data.machine.name;
+                
+                // Render hardware info
+                const hwContainer = document.getElementById('machine-hardware-info');
+                if (data.facts) {
+                    const facts = data.facts;
+                    let hwHtml = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">';
+                    hwHtml += `<div><strong>OS:</strong> ${facts.os_name || 'Unknown'} ${facts.os_version || ''}</div>`;
+                    hwHtml += `<div><strong>Architecture:</strong> ${facts.arch || 'Unknown'}</div>`;
+                    hwHtml += `<div><strong>CPU:</strong> ${facts.cpu_model || 'Unknown'} (${facts.cpu_cores || '?'} cores)</div>`;
+                    hwHtml += `<div><strong>RAM:</strong> ${formatBytes(facts.ram_bytes)}</div>`;
+                    hwHtml += `<div><strong>Disk Free:</strong> ${formatBytes(facts.disk_free_bytes)}</div>`;
+                    hwHtml += `<div><strong>Capability:</strong> <span class="status-badge status-${facts.capability_state === 'cpu_only' ? 'planned' : 'running'}">${facts.capability_state}</span></div>`;
+                    if (facts.gpu_name) {
+                        hwHtml += `<div><strong>GPU:</strong> ${facts.gpu_name}</div>`;
+                        hwHtml += `<div><strong>GPU VRAM:</strong> ${formatBytes(facts.gpu_vram_bytes)}</div>`;
+                    }
+                    hwHtml += '</div>';
+                    hwContainer.innerHTML = hwHtml;
+                } else {
+                    hwContainer.innerHTML = '<p style="color: #a0a0c0;">No detection data. <button onclick="detectMachine(\'' + id + '\')" class="secondary">Run Detection</button></p>';
+                }
+                
+                // Load deployable models
+                const modelsContainer = document.getElementById('machine-deployable-models');
+                try {
+                    const deployData = await api(`/api/machines/${id}/deployable-models`);
+                    if (deployData.recommendations && deployData.recommendations.length > 0) {
+                        let modelsHtml = '<table><thead><tr><th>Model</th><th>Size</th><th>Backend</th><th>Compatibility</th><th>Load</th><th>Actions</th></tr></thead><tbody>';
+                        deployData.recommendations.forEach(rec => {
+                            const compatClass = rec.compatibility === 'optimal' ? 'status-running' : rec.compatibility === 'compatible' ? 'status-planned' : 'status-unhealthy';
+                            modelsHtml += `
+                                <tr>
+                                    <td><strong>${rec.model.display_name}</strong><br><small>${rec.model.filename}</small></td>
+                                    <td>${rec.model.parameter_size || '-'}</td>
+                                    <td><code>${rec.recommended_backend}</code></td>
+                                    <td><span class="status-badge ${compatClass}">${rec.compatibility}</span></td>
+                                    <td>${rec.estimated_load || '-'}</td>
+                                    <td class="actions">
+                                        <button onclick="quickDeploy('${id}', '${rec.model.id}', '${rec.model.display_name}', '${rec.recommended_backend}')" class="secondary">Quick Deploy</button>
+                                    </td>
+                                </tr>`;
+                        });
+                        modelsHtml += '</tbody></table>';
+                        modelsContainer.innerHTML = modelsHtml;
+                    } else {
+                        modelsHtml = '<p style="color: #a0a0c0;">No models compatible with this machine.</p>';
+                        modelsContainer.innerHTML = modelsHtml;
+                    }
+                } catch (err) {
+                    modelsContainer.innerHTML = `<p style="color: #a0a0c0;">${err.message}</p>`;
+                }
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        async function quickDeploy(machineId, modelId, modelName, backend) {
+            const name = prompt('Deployment name:', modelName.toLowerCase().replace(/[^a-z0-9]/g, '-'));
+            if (!name) return;
+            
+            try {
+                await api('/api/deployments', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: name,
+                        machine_id: machineId,
+                        model_id: modelId,
+                        backend: backend,
+                        port: 8081
+                    })
+                });
+                showSuccess('Deployment created! Go to Deployments to start it.');
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes) return 'Unknown';
+            if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+            if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return bytes + ' B';
         }
 
         // Models

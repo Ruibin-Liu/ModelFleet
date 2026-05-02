@@ -33,6 +33,7 @@ func main() {
 	machineRepo := repository.NewMachineRepository(jsonStore)
 	modelRepo := repository.NewModelRepository(jsonStore)
 	deploymentRepo := repository.NewDeploymentRepository(jsonStore)
+	factsRepo := repository.NewMachineFactsRepository(jsonStore)
 	eventRepo := repository.NewEventRepository(jsonStore)
 	apiKeyRepo := repository.NewAPIKeyRepository(jsonStore)
 
@@ -45,7 +46,7 @@ func main() {
 	defer healthScheduler.Stop()
 
 	// Create router
-	router := api.NewRouter(machineRepo, modelRepo, deploymentRepo, eventRepo, apiKeyRepo, eventLogger)
+	router := api.NewRouter(machineRepo, modelRepo, deploymentRepo, factsRepo, eventRepo, apiKeyRepo, eventLogger)
 
 	log.Printf("ModelFleet starting on port %s", port)
 	log.Printf("API: http://localhost:%s", port)

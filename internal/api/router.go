@@ -17,6 +17,7 @@ func NewRouter(
 	machineRepo *repository.MachineRepository,
 	modelRepo *repository.ModelRepository,
 	deploymentRepo *repository.DeploymentRepository,
+	factsRepo *repository.MachineFactsRepository,
 	eventRepo *repository.EventRepository,
 	apiKeyRepo *repository.APIKeyRepository,
 	eventLogger *events.Logger,
@@ -24,7 +25,7 @@ func NewRouter(
 	mux := http.NewServeMux()
 
 	// Initialize handlers
-	machineHandler := NewMachineHandler(machineRepo)
+	machineHandler := NewMachineHandler(machineRepo, factsRepo, modelRepo)
 	modelHandler := NewModelHandler(modelRepo)
 	deploymentHandler := NewDeploymentHandler(deploymentRepo, machineRepo, modelRepo, eventLogger)
 	gatewayProxy := gateway.NewProxy(deploymentRepo, eventLogger)
@@ -68,6 +69,14 @@ func NewRouter(
 	mux.HandleFunc("/api/machines/{id}/detect", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			machineHandler.Detect(w, r)
+		} else {
+			JSONError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/api/machines/{id}/deployable-models", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			machineHandler.GetDeployableModels(w, r)
 		} else {
 			JSONError(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
