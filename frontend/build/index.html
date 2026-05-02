@@ -212,6 +212,7 @@ curl http://localhost:3456/v1/chat/completions \\
                             <select id="m-connection-type" onchange="toggleMachineFields()">
                                 <option value="ssh">SSH</option>
                                 <option value="docker">Docker</option>
+                                <option value="local">Local (This Machine)</option>
                             </select>
                         </div>
                         <div class="form-group ssh-field">
@@ -507,6 +508,11 @@ curl http://localhost:3456/v1/chat/completions \\
                 dockerFields.forEach(f => f.style.display = 'block');
                 document.getElementById('m-port').removeAttribute('required');
                 document.getElementById('m-user').removeAttribute('required');
+            } else if (connectionType === 'local') {
+                sshFields.forEach(f => f.style.display = 'none');
+                dockerFields.forEach(f => f.style.display = 'none');
+                document.getElementById('m-port').removeAttribute('required');
+                document.getElementById('m-user').removeAttribute('required');
             } else {
                 sshFields.forEach(f => f.style.display = 'block');
                 dockerFields.forEach(f => f.style.display = 'none');
@@ -562,13 +568,32 @@ curl http://localhost:3456/v1/chat/completions \\
                 
                 let html = '<div class="card"><h3>Machines List</h3><table><thead><tr><th>Name</th><th>Type</th><th>Host</th><th>Details</th><th>Actions</th></tr></thead><tbody>';
                 machines.forEach(m => {
-                    const typeBadge = m.connection_type === 'docker' 
-                        ? '<span class="status-badge status-running">Docker</span>' 
-                        : '<span class="status-badge status-planned">SSH</span>';
-                    const details = m.connection_type === 'docker' 
-                        ? `<code>${m.docker_image || 'default'}</code>` 
-                        : `${m.ssh_user}:${m.ssh_port}`;
-                    const testLabel = m.connection_type === 'docker' ? 'Test Docker' : 'Test SSH';
+                    let typeBadge;
+                    if (m.connection_type === 'docker') {
+                        typeBadge = '<span class="status-badge status-running">Docker</span>';
+                    } else if (m.connection_type === 'local') {
+                        typeBadge = '<span class="status-badge status-healthy">Local</span>';
+                    } else {
+                        typeBadge = '<span class="status-badge status-planned">SSH</span>';
+                    }
+                    
+                    let details;
+                    if (m.connection_type === 'docker') {
+                        details = `<code>${m.docker_image || 'default'}</code>`;
+                    } else if (m.connection_type === 'local') {
+                        details = 'localhost';
+                    } else {
+                        details = `${m.ssh_user}:${m.ssh_port}`;
+                    }
+                    
+                    let testLabel;
+                    if (m.connection_type === 'docker') {
+                        testLabel = 'Test Docker';
+                    } else if (m.connection_type === 'local') {
+                        testLabel = 'Test Local';
+                    } else {
+                        testLabel = 'Test SSH';
+                    }
                     
                     html += `
                         <tr>

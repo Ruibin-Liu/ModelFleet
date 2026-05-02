@@ -174,9 +174,12 @@ func (h *DeploymentHandler) Start(w http.ResponseWriter, r *http.Request) {
 	var result *deployment.ExecutionResult
 	var execErr error
 
-	if machine.ConnectionType == "docker" {
+	switch machine.ConnectionType {
+	case "docker":
 		result, execErr = h.executor.StartDocker(dep, machine, model)
-	} else {
+	case "local":
+		result, execErr = h.executor.StartLocal(dep, machine, model)
+	default:
 		result, execErr = h.executor.Start(dep, machine, model)
 	}
 
@@ -226,9 +229,12 @@ func (h *DeploymentHandler) Stop(w http.ResponseWriter, r *http.Request) {
 	var result *deployment.ExecutionResult
 	var execErr error
 
-	if machine.ConnectionType == "docker" {
+	switch machine.ConnectionType {
+	case "docker":
 		result, execErr = h.executor.StopDocker(dep, machine)
-	} else {
+	case "local":
+		result, execErr = h.executor.StopLocal(dep, machine)
+	default:
 		result, execErr = h.executor.Stop(dep, machine)
 	}
 
@@ -280,9 +286,12 @@ func (h *DeploymentHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	var logs string
 	var logsErr error
 
-	if machine.ConnectionType == "docker" {
+	switch machine.ConnectionType {
+	case "docker":
 		logs, logsErr = h.executor.GetDockerLogs(dep, machine, lines)
-	} else {
+	case "local":
+		logs, logsErr = h.executor.GetLocalLogs(dep, machine, lines)
+	default:
 		logs, logsErr = h.executor.GetLogs(dep, machine, lines)
 	}
 

@@ -398,3 +398,19 @@ func (e *Executor) GetDockerLogs(deployment *models.Deployment, machine *models.
 
 	return client.GetContainerLogs(containerName, lines)
 }
+
+// Local deployment methods
+func (e *Executor) StartLocal(deployment *models.Deployment, machine *models.Machine, model *models.Model) (*ExecutionResult, error) {
+	localExec := NewLocalExecutor()
+	return localExec.Start(deployment, machine, model)
+}
+
+func (e *Executor) StopLocal(deployment *models.Deployment, machine *models.Machine) (*ExecutionResult, error) {
+	localExec := NewLocalExecutor()
+	return localExec.Stop(deployment, machine)
+}
+
+func (e *Executor) GetLocalLogs(deployment *models.Deployment, machine *models.Machine, lines int) (string, error) {
+	localExec := NewLocalExecutor()
+	return localExec.GetLogs(deployment, machine, lines)
+}

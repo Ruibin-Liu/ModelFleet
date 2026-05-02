@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"strconv"
+	"strings"
 
 	"github.com/modelfleet/modelfleet/internal/deployment"
 	"github.com/modelfleet/modelfleet/internal/models"
@@ -93,8 +96,11 @@ func (h *MachineHandler) Create(w http.ResponseWriter, r *http.Request) {
 			machine.DockerImage = "ghcr.io/ggml-org/llama.cpp:server"
 		}
 		// Docker machines don't need SSH credentials
+	case "local":
+		// Local machines run on the host directly
+		machine.Host = "localhost"
 	default:
-		JSONError(w, "connection_type must be 'ssh' or 'docker'", http.StatusBadRequest)
+		JSONError(w, "connection_type must be 'ssh', 'docker', or 'local'", http.StatusBadRequest)
 		return
 	}
 
@@ -170,6 +176,15 @@ func (h *MachineHandler) TestSSH(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle local machines
+	if machine.ConnectionType == "local" {
+		JSONResponse(w, map[string]interface{}{
+			"success": true,
+			"message": "Local machine is accessible",
+		})
+		return
+	}
+
 	result, err := testSSHConnection(machine)
 	if err != nil {
 		JSONResponse(w, map[string]interface{}{
@@ -212,6 +227,42 @@ func (h *MachineHandler) Detect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For local machines, detect host hardware
+	if machine.ConnectionType == "local" {
+		result, err := detectLocalMachine()
+		if err != nil {
+			JSONError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		facts := &models.MachineFacts{
+			MachineID:        id,
+			OSName:           result.OSName,
+			OSVersion:        result.OSVersion,
+			Arch:             result.Arch,
+			CPUModel:         result.CPUModel,
+			CPUCores:         result.CPUCores,
+			RAMBytes:         result.RAMBytes,
+			DiskFreeBytes:    result.DiskFreeBytes,
+			GPUVendor:        result.GPUVendor,
+			GPUName:          result.GPUName,
+			GPUVRAMBytes:     result.GPUVRAMBytes,
+			GPUDriverVersion: result.GPUDriverVersion,
+			CapabilityState:  result.CapabilityState,
+			HasNVIDIA:        result.HasNVIDIA,
+			HasAMD:           result.HasAMD,
+			HasVulkan:        result.HasVulkan,
+		}
+
+		if err := h.factsRepo.Save(facts); err != nil {
+			JSONError(w, fmt.Sprintf("Detection completed but failed to save: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		JSONResponse(w, result)
+		return
+	}
+
 	result, err := detectMachine(machine)
 	if err != nil {
 		JSONError(w, err.Error(), http.StatusInternalServerError)
@@ -244,6 +295,90 @@ func (h *MachineHandler) Detect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSONResponse(w, result)
+}
+
+func detectLocalMachine() (*DetectionResult, error) {
+	result := &DetectionResult{}
+
+	// Detect OS
+	cmd := exec.Command("uname", "-s")
+	output, _ := cmd.Output()
+	result.OSName = strings.TrimSpace(string(output))
+
+	cmd = exec.Command("uname", "-r")
+	output, _ = cmd.Output()
+	result.OSVersion = strings.TrimSpace(string(output))
+
+	// Detect arch
+	cmd = exec.Command("uname", "-m")
+	output, _ = cmd.Output()
+	result.Arch = strings.TrimSpace(string(output))
+
+	// Detect CPU
+	cmd = exec.Command("sysctl", "-n", "machdep.cpu.brand_string")
+	output, _ = cmd.Output()
+	result.CPUModel = strings.TrimSpace(string(output))
+
+	cmd = exec.Command("sysctl", "-n", "hw.ncpu")
+	output, _ = cmd.Output()
+	coresStr := strings.TrimSpace(string(output))
+	result.CPUCores, _ = strconv.Atoi(coresStr)
+
+	// Detect memory
+	cmd = exec.Command("sysctl", "-n", "hw.memsize")
+	output, _ = cmd.Output()
+	memStr := strings.TrimSpace(string(output))
+	result.RAMBytes, _ = strconv.ParseInt(memStr, 10, 64)
+
+	// Detect disk
+	cmd = exec.Command("df", "-B1", ".")
+	output, _ = cmd.Output()
+	lines := strings.Split(string(output), "\n")
+	if len(lines) > 1 {
+		fields := strings.Fields(lines[1])
+		if len(fields) >= 4 {
+			result.DiskFreeBytes, _ = strconv.ParseInt(fields[3], 10, 64)
+		}
+	}
+
+	// Detect GPU (NVIDIA)
+	cmd = exec.Command("command", "-v", "nvidia-smi")
+	result.HasNVIDIA = (cmd.Run() == nil)
+
+	if result.HasNVIDIA {
+		cmd = exec.Command("nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader")
+		output, _ = cmd.Output()
+		parts := strings.Split(strings.TrimSpace(string(output)), ", ")
+		if len(parts) >= 3 {
+			result.GPUVendor = "NVIDIA"
+			result.GPUName = strings.TrimSpace(parts[0])
+			result.GPUDriverVersion = strings.TrimSpace(parts[2])
+			memStr := strings.TrimSpace(strings.TrimSuffix(parts[1], " MiB"))
+			memMiB, _ := strconv.ParseInt(memStr, 10, 64)
+			result.GPUVRAMBytes = memMiB * 1024 * 1024
+		}
+	}
+
+	// Detect AMD ROCm
+	cmd = exec.Command("command", "-v", "rocminfo")
+	result.HasAMD = (cmd.Run() == nil)
+
+	// Detect Vulkan
+	cmd = exec.Command("command", "-v", "vulkaninfo")
+	result.HasVulkan = (cmd.Run() == nil)
+
+	// Determine capability
+	if result.HasNVIDIA && result.GPUName != "" {
+		result.CapabilityState = "nvidia_ready"
+	} else if result.HasAMD {
+		result.CapabilityState = "amd_rocm_ready"
+	} else if result.HasVulkan {
+		result.CapabilityState = "vulkan_ready"
+	} else {
+		result.CapabilityState = "cpu_only"
+	}
+
+	return result, nil
 }
 
 func (h *MachineHandler) GetDeployableModels(w http.ResponseWriter, r *http.Request) {
