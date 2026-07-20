@@ -96,11 +96,11 @@ Client (Browser) <-> Go HTTP Server
   │   ├── GET /v1/models
   │   └── POST /v1/chat/completions (proxies to remote)
   └── Static Files (frontend/build/index.html)
-  
+
 Background Services
   ├── Health Check Scheduler (30s interval)
   └── Event Logger
-  
+
 JSON File Store (./data/)
   ├── machines/
   ├── models/
