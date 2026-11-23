@@ -487,10 +487,10 @@ func NewMachineRepository(db *sql.DB) *MachineRepository {
 func (r *MachineRepository) Create(m *models.Machine) error {
 	m.CreatedAt = time.Now().UTC()
 	m.UpdatedAt = m.CreatedAt
-	
+
 	_, err := r.db.Exec(`
-		INSERT INTO machines (id, name, host, ssh_port, ssh_user, auth_type, 
-		auth_private_key_path, auth_password_encrypted, tags, notes, base_dir, 
+		INSERT INTO machines (id, name, host, ssh_port, ssh_user, auth_type,
+		auth_private_key_path, auth_password_encrypted, tags, notes, base_dir,
 		connection_type, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, m.ID, m.Name, m.Host, m.SSHPort, m.SSHUser, m.AuthType,
@@ -501,7 +501,7 @@ func (r *MachineRepository) Create(m *models.Machine) error {
 
 func (r *MachineRepository) GetAll() ([]models.Machine, error) {
 	rows, err := r.db.Query(`
-		SELECT id, name, host, ssh_port, ssh_user, auth_type, 
+		SELECT id, name, host, ssh_port, ssh_user, auth_type,
 		auth_private_key_path, tags, notes, base_dir, connection_type, created_at, updated_at
 		FROM machines ORDER BY created_at DESC
 	`)
@@ -531,7 +531,7 @@ func (r *MachineRepository) GetByID(id string) (*models.Machine, error) {
 	var m models.Machine
 	var createdAt, updatedAt string
 	err := r.db.QueryRow(`
-		SELECT id, name, host, ssh_port, ssh_user, auth_type, 
+		SELECT id, name, host, ssh_port, ssh_user, auth_type,
 		auth_private_key_path, tags, notes, base_dir, connection_type, created_at, updated_at
 		FROM machines WHERE id = ?
 	`, id).Scan(&m.ID, &m.Name, &m.Host, &m.SSHPort, &m.SSHUser, &m.AuthType,
@@ -579,11 +579,11 @@ func (h *MachineHandler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	if machines == nil {
 		machines = []models.Machine{}
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(machines)
 }
@@ -646,9 +646,9 @@ import (
 
 func NewRouter(machineRepo *repository.MachineRepository) http.Handler {
 	mux := http.NewServeMux()
-	
+
 	machineHandler := NewMachineHandler(machineRepo)
-	
+
 	mux.HandleFunc("/api/machines", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -659,7 +659,7 @@ func NewRouter(machineRepo *repository.MachineRepository) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	
+
 	return mux
 }
 ```
@@ -1255,8 +1255,8 @@ func (r *ModelRepository) Create(m *models.Model) error {
 	m.UpdatedAt = m.CreatedAt
 
 	_, err := r.db.Exec(`
-		INSERT INTO models (id, display_name, family, parameter_size, format, 
-		quantization, context_length, source_url, filename, sha256, 
+		INSERT INTO models (id, display_name, family, parameter_size, format,
+		quantization, context_length, source_url, filename, sha256,
 		estimated_ram_bytes, estimated_vram_bytes, tags, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, m.ID, m.DisplayName, m.Family, m.ParameterSize, m.Format,
@@ -1369,12 +1369,12 @@ func (h *ModelHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Update internal/api/router.go
 func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.ModelRepository) http.Handler {
 	mux := http.NewServeMux()
-	
+
 	machineHandler := NewMachineHandler(machineRepo)
 	modelHandler := NewModelHandler(modelRepo)
-	
+
 	// ... existing machine routes ...
-	
+
 	mux.HandleFunc("/api/models", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -1385,7 +1385,7 @@ func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	
+
 	return mux
 }
 ```
@@ -1780,14 +1780,14 @@ func (h *DeploymentHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Update router
 func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.ModelRepository, deploymentRepo *repository.DeploymentRepository) http.Handler {
 	mux := http.NewServeMux()
-	
+
 	machineHandler := NewMachineHandler(machineRepo)
 	modelHandler := NewModelHandler(modelRepo)
 	planner := deployment.NewPlanner(machineRepo, modelRepo)
 	deploymentHandler := NewDeploymentHandler(deploymentRepo, planner)
-	
+
 	// ... existing routes ...
-	
+
 	mux.HandleFunc("/api/deployments", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -1798,7 +1798,7 @@ func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	
+
 	mux.HandleFunc("/api/deployments/plan", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			deploymentHandler.CreatePlan(w, r)
@@ -1806,7 +1806,7 @@ func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	
+
 	return mux
 }
 ```
@@ -1920,9 +1920,9 @@ func (g *Gateway) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 // Add to internal/api/router.go
 func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.ModelRepository, deploymentRepo *repository.DeploymentRepository, aliasRepo *repository.AliasRepository) http.Handler {
 	mux := http.NewServeMux()
-	
+
 	// ... internal API routes ...
-	
+
 	// Gateway routes
 	gatewayHandler := gateway.NewGateway(deploymentRepo, aliasRepo)
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
@@ -1932,7 +1932,7 @@ func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	
+
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			gatewayHandler.ChatCompletions(w, r)
@@ -1940,7 +1940,7 @@ func NewRouter(machineRepo *repository.MachineRepository, modelRepo *repository.
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	
+
 	return mux
 }
 ```
@@ -1999,16 +1999,16 @@ npm install
 		padding: 1rem;
 		background: #1a1a2e;
 	}
-	
+
 	nav a {
 		color: #eee;
 		text-decoration: none;
 	}
-	
+
 	nav a:hover {
 		color: #fff;
 	}
-	
+
 	main {
 		padding: 2rem;
 		max-width: 1200px;
@@ -2021,13 +2021,13 @@ npm install
 <!-- frontend/src/routes/+page.svelte -->
 <script>
 	import { onMount } from 'svelte';
-	
+
 	let stats = {
 		machines: 0,
 		healthy: 0,
 		unhealthy: 0
 	};
-	
+
 	onMount(async () => {
 		// TODO: Fetch actual stats from API
 	});
@@ -2067,33 +2067,33 @@ npm install
 		gap: 1rem;
 		margin: 2rem 0;
 	}
-	
+
 	.stat {
 		background: #f5f5f5;
 		padding: 1.5rem;
 		border-radius: 8px;
 		text-align: center;
 	}
-	
+
 	.stat h3 {
 		margin: 0 0 0.5rem 0;
 		color: #666;
 	}
-	
+
 	.stat p {
 		margin: 0;
 		font-size: 2rem;
 		font-weight: bold;
 	}
-	
+
 	.quick-start {
 		margin-top: 2rem;
 	}
-	
+
 	.quick-start ol {
 		font-size: 1.1rem;
 	}
-	
+
 	.quick-start li {
 		margin: 0.5rem 0;
 	}
@@ -2132,11 +2132,11 @@ git commit -m "feat: add SvelteKit frontend foundation"
 <!-- frontend/src/routes/machines/+page.svelte -->
 <script>
 	import { onMount } from 'svelte';
-	
+
 	let machines = [];
 	let loading = true;
 	let error = null;
-	
+
 	let newMachine = {
 		name: '',
 		host: '',
@@ -2145,11 +2145,11 @@ git commit -m "feat: add SvelteKit frontend foundation"
 		auth_type: 'key',
 		auth_private_key_path: ''
 	};
-	
+
 	onMount(async () => {
 		await loadMachines();
 	});
-	
+
 	async function loadMachines() {
 		try {
 			const res = await fetch('/api/machines');
@@ -2160,7 +2160,7 @@ git commit -m "feat: add SvelteKit frontend foundation"
 			loading = false;
 		}
 	}
-	
+
 	async function addMachine() {
 		try {
 			const res = await fetch('/api/machines', {
@@ -2241,25 +2241,25 @@ git commit -m "feat: add SvelteKit frontend foundation"
 		border-radius: 8px;
 		margin-bottom: 2rem;
 	}
-	
+
 	.add-form input, .add-form select {
 		display: block;
 		width: 100%;
 		margin: 0.5rem 0;
 		padding: 0.5rem;
 	}
-	
+
 	table {
 		width: 100%;
 		border-collapse: collapse;
 	}
-	
+
 	th, td {
 		padding: 0.75rem;
 		text-align: left;
 		border-bottom: 1px solid #ddd;
 	}
-	
+
 	.error {
 		color: red;
 		padding: 1rem;
@@ -2276,27 +2276,27 @@ git commit -m "feat: add SvelteKit frontend foundation"
 <!-- frontend/src/routes/models/+page.svelte -->
 <script>
 	import { onMount } from 'svelte';
-	
+
 	let models = [];
 	let loading = true;
-	
+
 	let newModel = {
 		display_name: '',
 		filename: '',
 		source_url: '',
 		format: 'GGUF'
 	};
-	
+
 	onMount(async () => {
 		await loadModels();
 	});
-	
+
 	async function loadModels() {
 		const res = await fetch('/api/models');
 		models = await res.json();
 		loading = false;
 	}
-	
+
 	async function addModel() {
 		const res = await fetch('/api/models', {
 			method: 'POST',
@@ -2344,10 +2344,10 @@ git commit -m "feat: add SvelteKit frontend foundation"
 <!-- frontend/src/routes/deployments/+page.svelte -->
 <script>
 	import { onMount } from 'svelte';
-	
+
 	let deployments = [];
 	let loading = true;
-	
+
 	onMount(async () => {
 		const res = await fetch('/api/deployments');
 		deployments = await res.json();
@@ -2440,15 +2440,15 @@ func Handler() (http.Handler, error) {
 // Add to internal/api/router.go
 func NewRouter(...) http.Handler {
 	mux := http.NewServeMux()
-	
+
 	// API routes...
-	
+
 	// Static files
 	staticHandler, err := web.Handler()
 	if err == nil {
 		mux.Handle("/", staticHandler)
 	}
-	
+
 	return mux
 }
 ```
@@ -2596,12 +2596,12 @@ func (s *Scheduler) checkAll() {
 		}
 
 		state, message := s.checker.Check(&d)
-		
+
 		// Update deployment status based on health
 		if state == "unreachable" {
 			s.deploymentRepo.UpdateStatus(d.ID, "unhealthy")
 		}
-		
+
 		// TODO: Log health check result
 		_ = message
 	}
@@ -2663,7 +2663,7 @@ func main() {
 	machineRepo := repository.NewMachineRepository(database.DB)
 	modelRepo := repository.NewModelRepository(database.DB)
 	deploymentRepo := repository.NewDeploymentRepository(database.DB)
-	
+
 	// Initialize health checker
 	scheduler := health.NewScheduler(deploymentRepo)
 	scheduler.Start()
