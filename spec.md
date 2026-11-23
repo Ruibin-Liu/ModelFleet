@@ -1,8 +1,8 @@
 # ModelFleet — Product & Engineering Specification
 
-Version: **0.1 MVP Spec**  
-Scope: **Phase 1 only**  
-Mobile support: **deferred to Phase 2**  
+Version: **0.1 MVP Spec**
+Scope: **Phase 1 only**
+Mobile support: **deferred to Phase 2**
 Primary goal: **Deploy models across user-owned machines and expose them through one unified API.**
 
 ---
@@ -1502,4 +1502,3 @@ The MVP is successful when the following workflow works end-to-end:
 20. User receives a valid model response.
 
 If all 20 steps work reliably, Phase 1 MVP is complete.
-

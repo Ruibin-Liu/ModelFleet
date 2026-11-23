@@ -34,16 +34,16 @@ jobs:
         run: |
           # Linux AMD64
           GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=${GITHUB_REF#refs/tags/}" -o modelfleet-linux-amd64 .
-          
+
           # Linux ARM64
           GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X main.version=${GITHUB_REF#refs/tags/}" -o modelfleet-linux-arm64 .
-          
+
           # macOS AMD64
           GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X main.version=${GITHUB_REF#refs/tags/}" -o modelfleet-darwin-amd64 .
-          
+
           # macOS ARM64 (M1/M2/M3)
           GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=${GITHUB_REF#refs/tags/}" -o modelfleet-darwin-arm64 .
-          
+
           # Windows AMD64
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=${GITHUB_REF#refs/tags/}" -o modelfleet-windows-amd64.exe .
 
